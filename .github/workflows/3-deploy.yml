@@ -1,27 +1,7 @@
 name: Pipeline 3 - Despliegue a ACI
 
 on:
-  workflow_run:
-    workflows: ["Pipeline 2 - Build & Push"]
-    types:
-      - completed
-    branches: [main]
-  
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Ambiente a desplegar'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - prod
-      image_tag:
-        description: 'Tag de la imagen (dejar vacío para usar latest)'
-        required: false
-        default: 'latest'
-        type: string
 
 env:
   RESOURCE_GROUP: "rg-prestamos"
@@ -31,23 +11,17 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
       - name: Checkout código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Login a Azure
-        uses: azure/login@v1
+      - name: Login a Azure con credenciales
+        uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Obtener información del ACR
-        id: acr_info
         run: |
           ACR_LOGIN_SERVER=$(az acr show \
             --name ${{ env.ACR_NAME }} \
@@ -55,9 +29,9 @@ jobs:
             --query loginServer \
             --output tsv)
           echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+          echo "✅ ACR encontrado: $ACR_LOGIN_SERVER"
 
       - name: Obtener el nombre del ACI
-        id: get_aci
         run: |
           ACI_NAME=$(az container list \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -68,64 +42,31 @@ jobs:
             exit 1
           fi
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
+          echo "✅ ACI encontrado: $ACI_NAME"
 
       - name: Obtener la última imagen del ACR
-        id: get_image
         run: |
-          if [ "${{ github.event.inputs.image_tag }}" != "" ] && [ "${{ github.event.inputs.image_tag }}" != "latest" ]; then
-            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
-          else
-            IMAGE_TAG=$(az acr repository show-tags \
-              --name ${{ env.ACR_NAME }} \
-              --repository backend \
-              --orderby time_desc \
-              --top 1 \
-              --output tsv 2>/dev/null || echo "latest")
-          fi
+          IMAGE_TAG=$(az acr repository show-tags \
+            --name ${{ env.ACR_NAME }} \
+            --repository backend \
+            --orderby time_desc \
+            --top 1 \
+            --output tsv 2>/dev/null || echo "latest")
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
-      - name: Obtener variables de entorno de Cosmos DB
-        id: get_cosmos
-        run: |
-          COSMOS_NAME=$(az cosmosdb list \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query "[?contains(name, 'prestamos-cosmos')].name" \
-            --output tsv)
-          if [ -n "$COSMOS_NAME" ]; then
-            CONNECTION_STRING=$(az cosmosdb keys list \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name $COSMOS_NAME \
-              --type connection-strings \
-              --query "connectionStrings[0].connectionString" \
-              --output tsv)
-            echo "COSMOS_CONNECTION_STRING=$CONNECTION_STRING" >> $GITHUB_ENV
-          fi
+          echo "📦 Imagen: ${{ env.ACR_NAME }}.azurecr.io/backend:$IMAGE_TAG"
 
       - name: Actualizar contenedor backend en ACI
         run: |
-          az container stop \
+          echo "🔄 Actualizando contenedor..."
+          az container restart \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.ACI_NAME }} \
-            --container-name backend 2>/dev/null || true
-          sleep 5
-          if [ -n "${{ env.COSMOS_CONNECTION_STRING }}" ]; then
-            az container start \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --container-name backend \
-              --environment-variables DATABASE_URL="${{ env.COSMOS_CONNECTION_STRING }}" \
-              NODE_ENV="${{ github.event.inputs.environment || 'production' }}"
-          else
-            az container restart \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --container-name backend
-          fi
+            --container-name backend
 
       - name: Esperar a que el contenedor esté listo
-        id: wait_container
         run: |
-          MAX_ATTEMPTS=40
+          echo "⏳ Esperando que el contenedor esté en ejecución..."
+          MAX_ATTEMPTS=30
           ATTEMPT=0
           STATE="Unknown"
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
@@ -135,18 +76,18 @@ jobs:
               --query "containers[?name=='backend'].instanceView.currentState.state" \
               --output tsv 2>/dev/null || echo "Unknown")
             if [ "$STATE" = "Running" ]; then
+              echo "✅ Contenedor en ejecución"
               break
             fi
             sleep 10
             ATTEMPT=$((ATTEMPT+1))
           done
           if [ "$STATE" != "Running" ]; then
-            echo "❌ El contenedor no alcanzó estado 'Running'"
+            echo "❌ El contenedor no está en ejecución"
             exit 1
           fi
 
-      - name: Obtener información del contenedor
-        id: get_container_info
+      - name: Obtener IP del contenedor
         run: |
           IP_ADDRESS=$(az container show \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -154,49 +95,32 @@ jobs:
             --query "ipAddress.ip" \
             --output tsv 2>/dev/null || echo "No disponible")
           echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
+          echo "📝 IP: $IP_ADDRESS"
 
       - name: Validar aplicación
-        id: validate_app
         run: |
-          if [ "${{ env.CONTAINER_IP }}" = "No disponible" ] || [ -z "${{ env.CONTAINER_IP }}" ]; then
-            az container logs \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --container-name backend
-            exit 0
-          fi
           APP_URL="http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
-          echo "APP_URL=$APP_URL" >> $GITHUB_ENV
+          echo "🧪 Probando: $APP_URL"
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             --connect-timeout 10 \
             --max-time 15 \
             $APP_URL/health 2>/dev/null || echo "000")
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
-            echo "✅ Aplicación respondiendo correctamente (HTTP $HTTP_CODE)"
+            echo "✅ Aplicación responde (HTTP $HTTP_CODE)"
           else
-            echo "⚠️ La aplicación no responde (HTTP $HTTP_CODE)"
+            echo "⚠️ No responde (HTTP $HTTP_CODE)"
             az container logs \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --name ${{ env.ACI_NAME }} \
               --container-name backend
           fi
 
-      - name: Mostrar resumen del despliegue
+      - name: Mostrar resumen
         run: |
           echo "========================================="
           echo "✅ DESPLIEGUE COMPLETADO"
           echo "========================================="
           echo "📦 Imagen: ${{ env.ACR_NAME }}.azurecr.io/backend:${{ env.IMAGE_TAG }}"
-          echo "🔗 URL: ${{ env.APP_URL }}"
+          echo "🔗 URL: http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
           echo "🔄 Contenedor: ${{ env.ACI_NAME }}"
           echo "========================================="
-
-      - name: Guardar logs (si falló)
-        if: failure()
-        run: |
-          mkdir -p logs
-          az container logs \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --name ${{ env.ACI_NAME }} \
-            --container-name backend > logs/container-logs.txt 2>/dev/null || true
-          tail -50 logs/container-logs.txt 2>/dev/null || echo "No hay logs disponibles"
