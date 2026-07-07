@@ -36,12 +36,9 @@ resource "azurerm_container_group" "aci" {
       protocol = "TCP"
     }
 
-    # INYECCIÓN SEGURA DE CREDENCIALES
     secure_environment_variables = {
-      "COSMOS_CONNECTION_STRING" = azurerm_cosmosdb_account.db.connection_strings[0]
-      "PORT"                     = "8080"
+      COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.db.primary_sql_connection_string
+      PORT                     = "8080"
     }
   }
 }
-
-
