@@ -27,9 +27,11 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
+        working-directory: terraform
         run: terraform init
 
       - name: Crear ACI con Terraform
+        working-directory: terraform
         run: terraform apply -auto-approve
 
       - name: Obtener información del ACR
@@ -43,7 +45,7 @@ jobs:
           echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
           echo "ACR encontrado: $ACR_LOGIN_SERVER"
 
-      - name: Obtener el nombre del ACI
+      - name: Obtener nombre del ACI
         run: |
           ACI_NAME=$(az container list \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -58,7 +60,7 @@ jobs:
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
           echo "ACI encontrado: $ACI_NAME"
 
-      - name: Obtener imagen del ACR
+      - name: Obtener imagen desplegada
         run: |
           IMAGE_TAG=$(az acr repository show-tags \
             --name ${{ env.ACR_NAME }} \
@@ -72,14 +74,14 @@ jobs:
           echo "Imagen:"
           echo "${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
 
-      - name: Reiniciar contenedor
+      - name: Reiniciar ACI
         run: |
           az container restart \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.ACI_NAME }} \
             --container-name ${{ env.CONTAINER_NAME }}
 
-      - name: Esperar contenedor activo
+      - name: Esperar que el contenedor inicie
         run: |
           MAX_ATTEMPTS=30
           ATTEMPT=0
@@ -96,7 +98,7 @@ jobs:
             echo "Estado: $STATE"
 
             if [ "$STATE" = "Running" ]; then
-              echo "Contenedor ejecutándose"
+              echo "Contenedor funcionando"
               break
             fi
 
@@ -110,7 +112,7 @@ jobs:
             exit 1
           fi
 
-      - name: Obtener IP del contenedor
+      - name: Obtener IP del ACI
         run: |
           IP_ADDRESS=$(az container show \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -120,15 +122,13 @@ jobs:
 
           echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
 
-          echo "IP:"
-          echo "$IP_ADDRESS"
+          echo "IP: $IP_ADDRESS"
 
       - name: Validar aplicación
         run: |
           APP_URL="http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
 
-          echo "Probando:"
-          echo "$APP_URL"
+          echo "Probando: $APP_URL"
 
           HTTP_CODE=$(curl -s \
             -o /dev/null \
@@ -140,8 +140,8 @@ jobs:
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
             echo "Aplicación responde correctamente"
           else
-            echo "Aplicación no responde"
-            
+            echo "La aplicación no responde"
+
             az container logs \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --name ${{ env.ACI_NAME }} \
@@ -150,7 +150,7 @@ jobs:
             exit 1
           fi
 
-      - name: Mostrar resumen
+      - name: Resumen final
         run: |
           echo "================================="
           echo "DESPLIEGUE COMPLETADO"
