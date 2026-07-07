@@ -18,7 +18,7 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Login a Azure con credenciales
+      - name: Login a Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -30,7 +30,19 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      - name: Crear ACI con Terraform
+      - name: Importar recursos existentes
+        working-directory: terraform
+        run: |
+          terraform import azurerm_resource_group.rg \
+          /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos || true
+
+          terraform import azurerm_container_registry.acr \
+          /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.ContainerRegistry/registries/acrprestamos2026 || true
+
+          terraform import azurerm_cosmosdb_account.db \
+          /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.DocumentDB/databaseAccounts/prestamos-cosmos-dev || true
+
+      - name="Crear ACI con Terraform"
         working-directory: terraform
         run: terraform apply -auto-approve
 
@@ -43,7 +55,9 @@ jobs:
             --output tsv)
 
           echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+
           echo "ACR encontrado: $ACR_LOGIN_SERVER"
+
 
       - name: Obtener nombre del ACI
         run: |
@@ -58,9 +72,11 @@ jobs:
           fi
 
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
+
           echo "ACI encontrado: $ACI_NAME"
 
-      - name: Obtener imagen desplegada
+
+      - name: Obtener imagen del ACR
         run: |
           IMAGE_TAG=$(az acr repository show-tags \
             --name ${{ env.ACR_NAME }} \
@@ -74,6 +90,7 @@ jobs:
           echo "Imagen:"
           echo "${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
 
+
       - name: Reiniciar ACI
         run: |
           az container restart \
@@ -81,7 +98,8 @@ jobs:
             --name ${{ env.ACI_NAME }} \
             --container-name ${{ env.CONTAINER_NAME }}
 
-      - name: Esperar que el contenedor inicie
+
+      - name: Esperar contenedor activo
         run: |
           MAX_ATTEMPTS=30
           ATTEMPT=0
@@ -107,10 +125,12 @@ jobs:
 
           done
 
+
           if [ "$STATE" != "Running" ]; then
             echo "El contenedor no inició"
             exit 1
           fi
+
 
       - name: Obtener IP del ACI
         run: |
@@ -124,31 +144,36 @@ jobs:
 
           echo "IP: $IP_ADDRESS"
 
+
       - name: Validar aplicación
         run: |
           APP_URL="http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
 
           echo "Probando: $APP_URL"
 
+
           HTTP_CODE=$(curl -s \
-            -o /dev/null \
-            -w "%{http_code}" \
-            --connect-timeout 10 \
-            --max-time 15 \
-            "$APP_URL/health" || echo "000")
+          -o /dev/null \
+          -w "%{http_code}" \
+          --connect-timeout 10 \
+          --max-time 15 \
+          "$APP_URL/health" || echo "000")
+
 
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
             echo "Aplicación responde correctamente"
           else
-            echo "La aplicación no responde"
+
+            echo "Aplicación no responde"
 
             az container logs \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --container-name ${{ env.CONTAINER_NAME }}
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.ACI_NAME }} \
+            --container-name ${{ env.CONTAINER_NAME }}
 
             exit 1
           fi
+
 
       - name: Resumen final
         run: |
