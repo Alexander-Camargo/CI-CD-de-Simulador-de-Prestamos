@@ -52,3 +52,18 @@ variable "environment" {
   type        = string
   default     = "dev"
 }
+variable "environment" {
+  description = "Ambiente de despliegue"
+  type        = string
+  default     = "dev"
+}
+
+variable "subnet_id" {
+  description = "ID de la Subnet"
+  type        = string
+}
+
+variable "acr_login_server" {
+  description = "Login Server del Azure Container Registry"
+  type        = string
+}
