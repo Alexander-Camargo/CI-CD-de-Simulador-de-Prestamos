@@ -49,7 +49,9 @@ resource "azurerm_container_group" "aci" {
 
 
   subnet_ids = [
+
     azurerm_subnet.subnet.id
+
   ]
 
 
@@ -59,6 +61,21 @@ resource "azurerm_container_group" "aci" {
     azurerm_subnet.subnet
 
   ]
+
+
+
+  # Credenciales para acceder al Azure Container Registry
+
+  image_registry_credential {
+
+    server = azurerm_container_registry.acr.login_server
+
+    username = azurerm_container_registry.acr.admin_username
+
+    password = azurerm_container_registry.acr.admin_password
+
+  }
+
 
 
   container {
@@ -74,6 +91,7 @@ resource "azurerm_container_group" "aci" {
     memory = 1.5
 
 
+
     ports {
 
       port = 8080
@@ -83,6 +101,7 @@ resource "azurerm_container_group" "aci" {
     }
 
 
+
     secure_environment_variables = {
 
       PORT = "8080"
@@ -90,6 +109,5 @@ resource "azurerm_container_group" "aci" {
     }
 
   }
-
 
 }
