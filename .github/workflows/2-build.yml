@@ -46,4 +46,6 @@ jobs:
         echo "Subiendo imágenes al registro..."
         docker push $ACR_SERVER/${{ env.IMAGE_NAME }}:${{ github.sha }}
         docker push $ACR_SERVER/${{ env.IMAGE_NAME }}:latest
-```
+
+
+        
