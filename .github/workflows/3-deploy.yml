@@ -18,17 +18,21 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
+
       - name: Login a Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3
+
 
       - name: Terraform Init
         working-directory: terraform
         run: terraform init
+
 
       - name: Importar recursos existentes
         working-directory: terraform
@@ -42,9 +46,11 @@ jobs:
           terraform import azurerm_cosmosdb_account.db \
           /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.DocumentDB/databaseAccounts/prestamos-cosmos-dev || true
 
-      - name="Crear ACI con Terraform"
+
+      - name: Crear ACI con Terraform
         working-directory: terraform
         run: terraform apply -auto-approve
+
 
       - name: Obtener información del ACR
         run: |
@@ -55,7 +61,6 @@ jobs:
             --output tsv)
 
           echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
-
           echo "ACR encontrado: $ACR_LOGIN_SERVER"
 
 
@@ -72,7 +77,6 @@ jobs:
           fi
 
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
-
           echo "ACI encontrado: $ACI_NAME"
 
 
@@ -122,9 +126,7 @@ jobs:
 
             sleep 10
             ATTEMPT=$((ATTEMPT+1))
-
           done
-
 
           if [ "$STATE" != "Running" ]; then
             echo "El contenedor no inició"
@@ -151,25 +153,23 @@ jobs:
 
           echo "Probando: $APP_URL"
 
-
           HTTP_CODE=$(curl -s \
-          -o /dev/null \
-          -w "%{http_code}" \
-          --connect-timeout 10 \
-          --max-time 15 \
-          "$APP_URL/health" || echo "000")
+            -o /dev/null \
+            -w "%{http_code}" \
+            --connect-timeout 10 \
+            --max-time 15 \
+            "$APP_URL/health" || echo "000")
 
 
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
             echo "Aplicación responde correctamente"
           else
-
             echo "Aplicación no responde"
 
             az container logs \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --name ${{ env.ACI_NAME }} \
-            --container-name ${{ env.CONTAINER_NAME }}
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ env.ACI_NAME }} \
+              --container-name ${{ env.CONTAINER_NAME }}
 
             exit 1
           fi
