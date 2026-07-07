@@ -1,4 +1,4 @@
-name: Pipeline 3 - Despliegue a ACI
+  name: Pipeline 3 - Despliegue a ACI
 
 on:
   workflow_dispatch:
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout código
         uses: actions/checkout@v4
 
@@ -21,6 +22,9 @@ jobs:
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init
@@ -54,7 +58,7 @@ jobs:
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
           echo "ACI encontrado: $ACI_NAME"
 
-      - name: Obtener la última imagen del ACR
+      - name: Obtener imagen del ACR
         run: |
           IMAGE_TAG=$(az acr repository show-tags \
             --name ${{ env.ACR_NAME }} \
@@ -64,21 +68,19 @@ jobs:
             --output tsv)
 
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "Imagen: ${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
+
+          echo "Imagen:"
+          echo "${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
 
       - name: Reiniciar contenedor
         run: |
-          echo "Reiniciando contenedor..."
-
           az container restart \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.ACI_NAME }} \
             --container-name ${{ env.CONTAINER_NAME }}
 
-      - name: Esperar a que el contenedor esté listo
+      - name: Esperar contenedor activo
         run: |
-          echo "Esperando contenedor..."
-
           MAX_ATTEMPTS=30
           ATTEMPT=0
           STATE="Unknown"
@@ -91,19 +93,20 @@ jobs:
               --query "containers[0].instanceView.currentState.state" \
               --output tsv)
 
-            echo "Estado actual: $STATE"
+            echo "Estado: $STATE"
 
             if [ "$STATE" = "Running" ]; then
-              echo "Contenedor funcionando"
+              echo "Contenedor ejecutándose"
               break
             fi
 
             sleep 10
             ATTEMPT=$((ATTEMPT+1))
+
           done
 
           if [ "$STATE" != "Running" ]; then
-            echo "El contenedor no inició correctamente"
+            echo "El contenedor no inició"
             exit 1
           fi
 
@@ -116,27 +119,34 @@ jobs:
             --output tsv)
 
           echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
-          echo "IP del contenedor: $IP_ADDRESS"
+
+          echo "IP:"
+          echo "$IP_ADDRESS"
 
       - name: Validar aplicación
         run: |
           APP_URL="http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
 
-          echo "Probando: $APP_URL"
+          echo "Probando:"
+          echo "$APP_URL"
 
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-          --connect-timeout 10 \
-          --max-time 15 \
-          $APP_URL/health || echo "000")
+          HTTP_CODE=$(curl -s \
+            -o /dev/null \
+            -w "%{http_code}" \
+            --connect-timeout 10 \
+            --max-time 15 \
+            "$APP_URL/health" || echo "000")
 
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
             echo "Aplicación responde correctamente"
           else
-            echo "La aplicación no responde"
+            echo "Aplicación no responde"
+            
             az container logs \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --name ${{ env.ACI_NAME }} \
               --container-name ${{ env.CONTAINER_NAME }}
+
             exit 1
           fi
 
@@ -148,4 +158,4 @@ jobs:
           echo "Contenedor: ${{ env.ACI_NAME }}"
           echo "Imagen: ${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:${{ env.IMAGE_TAG }}"
           echo "URL: http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
-          echo "================================="          
+          echo "================================="
