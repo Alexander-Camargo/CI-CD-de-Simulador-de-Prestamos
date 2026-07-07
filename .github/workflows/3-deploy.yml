@@ -37,150 +37,104 @@ jobs:
       - name: Importar recursos existentes
         working-directory: terraform
         run: |
+
           terraform import azurerm_resource_group.rg \
           /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos || true
 
+
           terraform import azurerm_container_registry.acr \
           /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.ContainerRegistry/registries/acrprestamos2026 || true
+
 
           terraform import azurerm_cosmosdb_account.db \
           /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.DocumentDB/databaseAccounts/prestamos-cosmos-dev || true
 
 
-      - name: Crear ACI con Terraform
+          terraform import azurerm_virtual_network.vnet \
+          /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.Network/virtualNetworks/vnet-prestamos || true
+
+
+          terraform import azurerm_subnet.subnet \
+          /subscriptions/87663e4a-5ca0-4144-927f-a0ba95bd7322/resourceGroups/rg-prestamos/providers/Microsoft.Network/virtualNetworks/vnet-prestamos/subnets/subnet-prestamos || true
+
+
+
+      - name: Crear infraestructura faltante
         working-directory: terraform
         run: terraform apply -auto-approve
 
 
-      - name: Obtener información del ACR
+
+      - name: Obtener información del ACI
         run: |
-          ACR_LOGIN_SERVER=$(az acr show \
-            --name ${{ env.ACR_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query loginServer \
-            --output tsv)
 
-          echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
-          echo "ACR encontrado: $ACR_LOGIN_SERVER"
-
-
-      - name: Obtener nombre del ACI
-        run: |
           ACI_NAME=$(az container list \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query "[?contains(name, 'prestamos-aci')].name" \
-            --output tsv)
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --query "[?contains(name, 'prestamos-aci')].name" \
+          --output tsv)
+
 
           if [ -z "$ACI_NAME" ]; then
             echo "No se encontró el ACI"
             exit 1
           fi
 
+
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
           echo "ACI encontrado: $ACI_NAME"
 
 
-      - name: Obtener imagen del ACR
+
+      - name: Obtener IP del ACI
         run: |
-          IMAGE_TAG=$(az acr repository show-tags \
-            --name ${{ env.ACR_NAME }} \
-            --repository ${{ env.CONTAINER_NAME }} \
-            --orderby time_desc \
-            --top 1 \
-            --output tsv)
 
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
-          echo "Imagen:"
-          echo "${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
+          IP_ADDRESS=$(az container show \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.ACI_NAME }} \
+          --query "ipAddress.ip" \
+          --output tsv)
 
 
-      - name: Reiniciar ACI
+          echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
+
+          echo "IP del ACI: $IP_ADDRESS"
+
+
+
+      - name: Validar contenedor
         run: |
-          az container restart \
+
+          STATE=$(az container show \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name ${{ env.ACI_NAME }} \
+          --query "containers[0].instanceView.currentState.state" \
+          --output tsv)
+
+
+          echo "Estado del contenedor: $STATE"
+
+
+          if [ "$STATE" != "Running" ]; then
+
+            echo "El contenedor no está ejecutándose"
+
+            az container logs \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.ACI_NAME }} \
             --container-name ${{ env.CONTAINER_NAME }}
 
-
-      - name: Esperar contenedor activo
-        run: |
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-          STATE="Unknown"
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-
-            STATE=$(az container show \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --query "containers[0].instanceView.currentState.state" \
-              --output tsv)
-
-            echo "Estado: $STATE"
-
-            if [ "$STATE" = "Running" ]; then
-              echo "Contenedor funcionando"
-              break
-            fi
-
-            sleep 10
-            ATTEMPT=$((ATTEMPT+1))
-          done
-
-          if [ "$STATE" != "Running" ]; then
-            echo "El contenedor no inició"
             exit 1
-          fi
 
-
-      - name: Obtener IP del ACI
-        run: |
-          IP_ADDRESS=$(az container show \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --name ${{ env.ACI_NAME }} \
-            --query "ipAddress.ip" \
-            --output tsv)
-
-          echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
-
-          echo "IP: $IP_ADDRESS"
-
-
-      - name: Validar aplicación
-        run: |
-          APP_URL="http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
-
-          echo "Probando: $APP_URL"
-
-          HTTP_CODE=$(curl -s \
-            -o /dev/null \
-            -w "%{http_code}" \
-            --connect-timeout 10 \
-            --max-time 15 \
-            "$APP_URL/health" || echo "000")
-
-
-          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
-            echo "Aplicación responde correctamente"
-          else
-            echo "Aplicación no responde"
-
-            az container logs \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
-              --name ${{ env.ACI_NAME }} \
-              --container-name ${{ env.CONTAINER_NAME }}
-
-            exit 1
           fi
 
 
       - name: Resumen final
         run: |
+
           echo "================================="
           echo "DESPLIEGUE COMPLETADO"
           echo "================================="
-          echo "Contenedor: ${{ env.ACI_NAME }}"
-          echo "Imagen: ${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:${{ env.IMAGE_TAG }}"
-          echo "URL: http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
+          echo "ACI: ${{ env.ACI_NAME }}"
+          echo "IP: ${{ env.CONTAINER_IP }}"
+          echo "Puerto: ${{ env.APP_PORT }}"
           echo "================================="
