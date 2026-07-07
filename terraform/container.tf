@@ -4,7 +4,7 @@ resource "azurerm_cosmosdb_account" "db" {
   location            = var.location
   resource_group_name = var.resource_group_name
   offer_type          = "Standard"
-  kind                = "MongoDB"
+  kind                = "GlobalDocumentDB"
 
   consistency_policy {
     consistency_level = "Session"
@@ -26,31 +26,22 @@ resource "azurerm_container_group" "aci" {
   subnet_ids          = [var.subnet_id]
 
   container {
-    name   = "backend"
-    image  = "${var.acr_login_server}/backend:latest"
+    name   = "simulador-app"
+    image  = "${var.acr_login_server}/simulador-app:latest"
     cpu    = "0.5"
     memory = "1.5"
 
     ports {
-      port     = 3000
+      port     = 8080
       protocol = "TCP"
     }
 
-    # INYECCIÓN SEGURA DE CREDENCIALES (Tu punto fuerte en la evaluación)
+    # INYECCIÓN SEGURA DE CREDENCIALES
     secure_environment_variables = {
-      "DATABASE_URL" = azurerm_cosmosdb_account.db.connection_strings[0]
-    }
-  }
-
-  container {
-    name   = "frontend"
-    image  = "${var.acr_login_server}/frontend:latest"
-    cpu    = "0.5"
-    memory = "1.5"
-
-    ports {
-      port     = 80
-      protocol = "TCP"
+      "COSMOS_CONNECTION_STRING" = azurerm_cosmosdb_account.db.connection_strings[0]
+      "PORT"                     = "8080"
     }
   }
 }
+
+
