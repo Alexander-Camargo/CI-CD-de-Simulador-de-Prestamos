@@ -10,6 +10,12 @@ variable "prefix" {
   default     = "prestamos"
 }
 
+variable "environment" {
+  description = "Ambiente de despliegue"
+  type        = string
+  default     = "dev"
+}
+
 variable "resource_group_name" {
   description = "Nombre del Resource Group"
   type        = string
@@ -44,26 +50,4 @@ variable "subnet_address_prefix" {
   description = "Espacio de direcciones de la Subnet"
   type        = list(string)
   default     = ["10.0.1.0/24"]
-}
-
-# VARIABLE FALTANTE
-variable "environment" {
-  description = "Ambiente de despliegue"
-  type        = string
-  default     = "dev"
-}
-variable "environment" {
-  description = "Ambiente de despliegue"
-  type        = string
-  default     = "dev"
-}
-
-variable "subnet_id" {
-  description = "ID de la Subnet"
-  type        = string
-}
-
-variable "acr_login_server" {
-  description = "Login Server del Azure Container Registry"
-  type        = string
 }
