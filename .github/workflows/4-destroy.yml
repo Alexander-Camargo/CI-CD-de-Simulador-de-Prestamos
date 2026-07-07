@@ -1,0 +1,38 @@
+name: "Pipeline 4: Destruir Infraestructura"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Escribe "DESTRUIR" (en mayúsculas) para confirmar la eliminación de todo el proyecto'
+        required: true
+        default: ''
+
+jobs:
+  destroy:
+    name: "Terraform Destroy"
+    runs-on: ubuntu-latest
+    # Este 'if' es el mecanismo de seguridad. Si no escriben DESTRUIR, el trabajo se cancela.
+    if: github.event.inputs.confirmar == 'DESTRUIR'
+
+    steps:
+    - name: Checkout Código
+      uses: actions/checkout@v4
+
+    - name: Configurar Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform
+
+    - name: Terraform Destroy
+      run: terraform destroy -auto-approve
+      working-directory: ./terraform

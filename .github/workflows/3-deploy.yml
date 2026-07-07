@@ -6,7 +6,8 @@ on:
 env:
   RESOURCE_GROUP: "rg-prestamos"
   ACR_NAME: "acrprestamos2026"
-  APP_PORT: 3000
+  APP_PORT: 8080
+  CONTAINER_NAME: "simulador-app"
 
 jobs:
   deploy:
@@ -29,7 +30,7 @@ jobs:
             --query loginServer \
             --output tsv)
           echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
-          echo "✅ ACR encontrado: $ACR_LOGIN_SERVER"
+          echo "ACR encontrado: $ACR_LOGIN_SERVER"
 
       - name: Obtener el nombre del ACI
         run: |
@@ -38,30 +39,30 @@ jobs:
             --query "[?contains(name, 'prestamos-aci')].name" \
             --output tsv)
           if [ -z "$ACI_NAME" ]; then
-            echo "❌ No se encontró el ACI"
+            echo "No se encontró el ACI"
             exit 1
           fi
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
-          echo "✅ ACI encontrado: $ACI_NAME"
+          echo "ACI encontrado: $ACI_NAME"
 
       - name: Obtener la última imagen del ACR
         run: |
           IMAGE_TAG=$(az acr repository show-tags \
             --name ${{ env.ACR_NAME }} \
-            --repository backend \
+            --repository ${{ env.CONTAINER_NAME }} \
             --orderby time_desc \
             --top 1 \
             --output tsv 2>/dev/null || echo "latest")
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "📦 Imagen: ${{ env.ACR_NAME }}.azurecr.io/backend:$IMAGE_TAG"
+          echo "Imagen: ${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:$IMAGE_TAG"
 
-      - name: Actualizar contenedor backend en ACI
+      - name: Actualizar contenedor en ACI
         run: |
-          echo "🔄 Actualizando contenedor..."
+          echo "Actualizando contenedor..."
           az container restart \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --name ${{ env.ACI_NAME }} \
-            --container-name backend
+            --container-name ${{ env.CONTAINER_NAME }}
 
       - name: Esperar a que el contenedor esté listo
         run: |
@@ -73,17 +74,17 @@ jobs:
             STATE=$(az container show \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --name ${{ env.ACI_NAME }} \
-              --query "containers[?name=='backend'].instanceView.currentState.state" \
+              --query "containers[?name=='${{ env.CONTAINER_NAME }}'].instanceView.currentState.state" \
               --output tsv 2>/dev/null || echo "Unknown")
             if [ "$STATE" = "Running" ]; then
-              echo "✅ Contenedor en ejecución"
+              echo "Contenedor en ejecución"
               break
             fi
             sleep 10
             ATTEMPT=$((ATTEMPT+1))
           done
           if [ "$STATE" != "Running" ]; then
-            echo "❌ El contenedor no está en ejecución"
+            echo "El contenedor no está en ejecución"
             exit 1
           fi
 
@@ -95,7 +96,7 @@ jobs:
             --query "ipAddress.ip" \
             --output tsv 2>/dev/null || echo "No disponible")
           echo "CONTAINER_IP=$IP_ADDRESS" >> $GITHUB_ENV
-          echo "📝 IP: $IP_ADDRESS"
+          echo "IP: $IP_ADDRESS"
 
       - name: Validar aplicación
         run: |
@@ -106,21 +107,24 @@ jobs:
             --max-time 15 \
             $APP_URL/health 2>/dev/null || echo "000")
           if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "404" ]; then
-            echo "✅ Aplicación responde (HTTP $HTTP_CODE)"
+            echo "Aplicación responde (HTTP $HTTP_CODE)"
           else
-            echo "⚠️ No responde (HTTP $HTTP_CODE)"
+            echo "No responde (HTTP $HTTP_CODE)"
             az container logs \
               --resource-group ${{ env.RESOURCE_GROUP }} \
               --name ${{ env.ACI_NAME }} \
-              --container-name backend
+              --container-name ${{ env.CONTAINER_NAME }}
           fi
 
       - name: Mostrar resumen
         run: |
           echo "========================================="
-          echo "✅ DESPLIEGUE COMPLETADO"
+          echo "DESPLIEGUE COMPLETADO"
           echo "========================================="
-          echo "📦 Imagen: ${{ env.ACR_NAME }}.azurecr.io/backend:${{ env.IMAGE_TAG }}"
-          echo "🔗 URL: http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
-          echo "🔄 Contenedor: ${{ env.ACI_NAME }}"
+          echo "Imagen: ${{ env.ACR_NAME }}.azurecr.io/${{ env.CONTAINER_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "URL: http://${{ env.CONTAINER_IP }}:${{ env.APP_PORT }}"
+          echo "Contenedor: ${{ env.ACI_NAME }}"
           echo "========================================="
+
+
+          
