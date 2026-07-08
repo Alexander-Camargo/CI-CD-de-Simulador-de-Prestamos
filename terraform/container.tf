@@ -50,12 +50,12 @@ resource "azurerm_container_group" "aci" {
 
     # Regresamos el puerto al 8080 para que coincida perfectamente con tu Dockerfile
     ports {
-      port     = 8080
+      port     = 80
       protocol = "TCP"
     }
 
     secure_environment_variables = {
-      PORT                     = "8080" 
+      PORT                     = "80" 
       COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.db.primary_sql_connection_string
     }
   }

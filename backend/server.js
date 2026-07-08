@@ -68,7 +68,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor listo en el puerto ${PORT}`);
   if (process.env.COSMOS_CONNECTION_STRING) {
     console.log("¡Conexión configurada con Azure Cosmos DB!");
