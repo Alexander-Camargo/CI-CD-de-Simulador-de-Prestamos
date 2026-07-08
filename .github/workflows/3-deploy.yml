@@ -1,4 +1,4 @@
-name: Pipeline 3 - Despliegue a ACI
+name: Pipeline 3 - Despliegue a ACI y AppGW
 
 on:
   workflow_dispatch:
@@ -47,22 +47,17 @@ jobs:
           terraform import azurerm_resource_group.rg \
           /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }} || true
 
-
           terraform import azurerm_container_registry.acr \
           /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.ContainerRegistry/registries/${{ env.ACR_NAME }} || true
-
 
           terraform import azurerm_cosmosdb_account.db \
           /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.DocumentDB/databaseAccounts/prestamos-cosmos-dev || true
 
-
           terraform import azurerm_virtual_network.vnet \
           /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.Network/virtualNetworks/vnet-prestamos || true
 
-
           terraform import azurerm_subnet.subnet \
           /subscriptions/${{ env.SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.Network/virtualNetworks/vnet-prestamos/subnets/subnet-prestamos || true
-
 
 
       - name: Mostrar recursos Terraform
@@ -70,14 +65,13 @@ jobs:
         run: terraform state list
 
 
-
-      - name: Crear ACI
+      - name: Crear ACI y Application Gateway
         working-directory: terraform
         run: |
           terraform apply \
           -target=azurerm_container_group.aci \
+          -target=azurerm_application_gateway.appgw \
           -auto-approve
-
 
 
       - name: Buscar ACI creado
@@ -88,17 +82,13 @@ jobs:
           --query "[].name" \
           --output tsv)
 
-
           if [ -z "$ACI_NAME" ]; then
             echo "No existe ningún ACI en el Resource Group"
             exit 1
           fi
 
-
           echo "ACI_NAME=$ACI_NAME" >> $GITHUB_ENV
-
           echo "ACI encontrado: $ACI_NAME"
-
 
 
       - name: Ver estado del contenedor
@@ -110,25 +100,32 @@ jobs:
           --query "containers[0].instanceView.currentState.state" \
           --output tsv)
 
-
           echo "Estado del contenedor: $STATE"
 
 
-
-      - name: Obtener IP del ACI
+      - name: Obtener IPs (Privada y Pública)
         run: |
-
+          
+          # Obtener IP privada del ACI
           IP=$(az container show \
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --name ${{ env.ACI_NAME }} \
           --query "ipAddress.ip" \
           --output tsv)
 
+          # Obtener IP pública del Application Gateway
+          # Nota: 'pip-appgw-dev' debe coincidir con el nombre asignado en appgw.tf
+          APPGW_IP=$(az network public-ip show \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --name pip-appgw-dev \
+          --query "ipAddress" \
+          --output tsv)
 
           echo "CONTAINER_IP=$IP" >> $GITHUB_ENV
+          echo "APPGW_IP=$APPGW_IP" >> $GITHUB_ENV
 
-          echo "IP: $IP"
-
+          echo "IP Privada ACI: $IP"
+          echo "IP Pública AppGW: $APPGW_IP"
 
 
       - name: Resumen final
@@ -138,6 +135,8 @@ jobs:
           echo "DESPLIEGUE FINALIZADO"
           echo "================================="
           echo "ACI: ${{ env.ACI_NAME }}"
-          echo "IP: ${{ env.CONTAINER_IP }}"
-          echo "Puerto: ${{ env.APP_PORT }}"
+          echo "IP Privada (Interna): ${{ env.CONTAINER_IP }}"
+          echo "---------------------------------"
+          echo "🌐 ACCESO PÚBLICO: http://${{ env.APPGW_IP }}"
+          echo "Puerto Externo: 80 -> Puerto Interno ACI: ${{ env.APP_PORT }}"
           echo "================================="

@@ -39,3 +39,20 @@ resource "azurerm_container_registry" "acr" {
   sku           = "Basic"
   admin_enabled = true
 }
+
+# Subred dedicada para el Application Gateway
+resource "azurerm_subnet" "appgw_subnet" {
+  name                 = "snet-appgw-prestamos"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = var.appgw_subnet_prefix
+}
+
+# IP Pública para el Application Gateway
+resource "azurerm_public_ip" "appgw_pip" {
+  name                = "pip-appgw-${var.environment}"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
