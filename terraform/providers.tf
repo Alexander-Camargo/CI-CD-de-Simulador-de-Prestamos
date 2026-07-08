@@ -7,6 +7,14 @@ terraform {
       version = "~> 4.0"
     }
   }
+
+  # Configuración de la memoria en la nube (Remote Backend)
+  backend "azurerm" {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "sttfstateprestamos2026" # Si cambiaste el nombre en el paso 2, ponlo aquí
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+  }
 }
 
 provider "azurerm" {
