@@ -48,15 +48,14 @@ resource "azurerm_container_group" "aci" {
     cpu    = 0.5
     memory = 1.5
 
-    # Cambiamos el puerto expuesto al 80 (puerto web estándar)
+    # Regresamos el puerto al 8080 para que coincida perfectamente con tu Dockerfile
     ports {
-      port     = 80
+      port     = 8080
       protocol = "TCP"
     }
 
     secure_environment_variables = {
-      # Le decimos a Express/Node.js que arranque en el puerto 80
-      PORT                     = "80" 
+      PORT                     = "8080" 
       COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.db.primary_sql_connection_string
     }
   }
