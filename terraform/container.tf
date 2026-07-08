@@ -48,14 +48,15 @@ resource "azurerm_container_group" "aci" {
     cpu    = 0.5
     memory = 1.5
 
+    # Cambiamos el puerto expuesto al 80 (puerto web estándar)
     ports {
-      port     = 8080
+      port     = 80
       protocol = "TCP"
     }
 
     secure_environment_variables = {
-      PORT                     = "8080"
-      # Aquí inyectamos mágicamente la cadena de conexión de la BD creada arriba
+      # Le decimos a Express/Node.js que arranque en el puerto 80
+      PORT                     = "80" 
       COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.db.primary_sql_connection_string
     }
   }
