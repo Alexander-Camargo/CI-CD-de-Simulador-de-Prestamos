@@ -17,18 +17,6 @@ resource "azurerm_subnet" "subnet" {
   virtual_network_name = azurerm_virtual_network.vnet.name
 
   address_prefixes = var.subnet_address_prefix
-
-  delegation {
-    name = "aci-delegation"
-
-    service_delegation {
-      name = "Microsoft.ContainerInstance/containerGroups"
-
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/action"
-      ]
-    }
-  }
 }
 
 resource "azurerm_container_registry" "acr" {

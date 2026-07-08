@@ -65,12 +65,11 @@ jobs:
         run: terraform state list
 
 
-      - name: Crear ACI y Application Gateway
+      - name: Desplegar ACI
         working-directory: terraform
         run: |
           terraform apply \
           -target=azurerm_container_group.aci \
-          -target=azurerm_application_gateway.appgw \
           -auto-approve
 
 
@@ -103,29 +102,28 @@ jobs:
           echo "Estado del contenedor: $STATE"
 
 
-      - name: Obtener IPs (Privada y Pública)
+      - name: Obtener IP Pública y Dominio
         run: |
           
-          # Obtener IP privada del ACI
+          # Obtener IP pública del ACI
           IP=$(az container show \
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --name ${{ env.ACI_NAME }} \
           --query "ipAddress.ip" \
           --output tsv)
 
-          # Obtener IP pública del Application Gateway
-          # Nota: 'pip-appgw-dev' debe coincidir con el nombre asignado en appgw.tf
-          APPGW_IP=$(az network public-ip show \
+          # Obtener FQDN (Nombre de dominio) del ACI
+          FQDN=$(az container show \
           --resource-group ${{ env.RESOURCE_GROUP }} \
-          --name pip-appgw-dev \
-          --query "ipAddress" \
+          --name ${{ env.ACI_NAME }} \
+          --query "ipAddress.fqdn" \
           --output tsv)
 
           echo "CONTAINER_IP=$IP" >> $GITHUB_ENV
-          echo "APPGW_IP=$APPGW_IP" >> $GITHUB_ENV
+          echo "CONTAINER_FQDN=$FQDN" >> $GITHUB_ENV
 
-          echo "IP Privada ACI: $IP"
-          echo "IP Pública AppGW: $APPGW_IP"
+          echo "IP Pública ACI: $IP"
+          echo "URL: $FQDN"
 
 
       - name: Resumen final
@@ -135,8 +133,7 @@ jobs:
           echo "DESPLIEGUE FINALIZADO"
           echo "================================="
           echo "ACI: ${{ env.ACI_NAME }}"
-          echo "IP Privada (Interna): ${{ env.CONTAINER_IP }}"
           echo "---------------------------------"
-          echo "🌐 ACCESO PÚBLICO: http://${{ env.APPGW_IP }}"
-          echo "Puerto Externo: 80 -> Puerto Interno ACI: ${{ env.APP_PORT }}"
+          echo "🌐 ACCESO PÚBLICO: http://${{ env.CONTAINER_FQDN }}:${{ env.APP_PORT }}"
+          echo "IP Pública: ${{ env.CONTAINER_IP }}"
           echo "================================="

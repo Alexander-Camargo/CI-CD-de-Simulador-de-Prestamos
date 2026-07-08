@@ -44,21 +44,12 @@ resource "azurerm_container_group" "aci" {
 
   os_type = "Linux"
 
-
-  ip_address_type = "Private"
-
-
-  subnet_ids = [
-
-    azurerm_subnet.subnet.id
-
-  ]
-
+  ip_address_type = "Public"
+  dns_name_label  = "simulador-app-${var.prefix}-${var.environment}"
 
   depends_on = [
 
     azurerm_container_registry.acr,
-    azurerm_subnet.subnet
 
   ]
 
