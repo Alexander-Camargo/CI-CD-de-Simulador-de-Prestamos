@@ -57,6 +57,8 @@ resource "azurerm_container_group" "aci" {
     secure_environment_variables = {
       PORT                     = "80" 
       COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.db.primary_sql_connection_string
+      # Agregamos esta variable para obligar a Terraform a destruir y recrear el contenedor
+      FORCE_RESTART            = "1"
     }
   }
 }
